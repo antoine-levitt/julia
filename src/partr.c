@@ -360,7 +360,7 @@ JL_DLLEXPORT void jl_wakeup_thread(int16_t tid)
 
     /* ensure thread tid is awake if necessary */
     if (sleep_threshold && sleep_check_state == sleeping
-            && ptls->tid != tid && !_threadedregion && tid != -1) {
+            && ptls->tid != tid && tid != -1) {
         uv_mutex_lock(&all_sleep_states[tid]->sleep_lock);
         if (all_sleep_states[tid]->sleep_state == sleeping)
             uv_cond_signal(&all_sleep_states[tid]->wake_signal);
@@ -402,42 +402,10 @@ JL_DLLEXPORT jl_task_t *jl_task_get_next(jl_value_t *getsticky)
             return task;
 
         if (ptls->tid == 0) {
-            if (!_threadedregion) {
-                if (jl_run_once(jl_global_event_loop()) == 0) {
-                    task = get_next_task(getsticky);
-                    if (task)
-                        return task;
-#ifdef _OS_WINDOWS_
-                    Sleep(INFINITE);
-#else
-                    pause();
-#endif
-                }
-            }
-            else {
-                jl_process_events(jl_global_event_loop());
-            }
+            jl_process_events(jl_global_event_loop());
         }
         else {
-            int sleepnow = 0;
-            if (!_threadedregion) {
-                uv_mutex_lock(&sleep_lock);
-                if (!_threadedregion) {
-                    sleepnow = 1;
-                }
-                else {
-                    uv_mutex_unlock(&sleep_lock);
-                }
-            }
-            else {
-                jl_cpu_pause();
-            }
-            if (sleepnow) {
-                int8_t gc_state = jl_gc_safe_enter(ptls);
-                uv_cond_wait(&sleep_alarm, &sleep_lock);
-                uv_mutex_unlock(&sleep_lock);
-                jl_gc_safe_leave(ptls, gc_state);
-            }
+            jl_cpu_pause();
         }
     }
 }
